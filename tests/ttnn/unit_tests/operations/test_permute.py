@@ -524,6 +524,26 @@ def test_permute_4d_whyx_permutations(device, shape, perm, dtype):
     assert torch_output.shape == output_tensor.shape
     assert_with_pcc(torch_output, output_tensor, 0.9999)
 
+def run_simple(device):
+    layout = ttnn.TILE_LAYOUT
+    dtype = ttnn.bfloat16
+    shape = (4, 4)
+    a = torch.rand(shape, dtype=torch.bfloat16)
+    b = torch.rand(shape, dtype=torch.bfloat16)
+    c = torch.add(a, b)
+
+    a_tt = ttnn.from_torch(a, layout=layout, dtype=dtype, device=device)
+    b_tt = ttnn.from_torch(b, layout=layout, dtype=dtype, device=device)
+    c_tt = ttnn.add(a_tt, b_tt)
+
+    c_tt_torch = ttnn.to_torch(c_tt)
+
+    print("a,b=", a, b)
+    print("expected c=", c)
+    print("actual c=", c_tt_torch)
+
+    assert c.shape == c_tt_torch.shape
+    assert torch.allclose(c, c_tt_torch, rtol=1e-2, atol=1e-3)
 
 @pytest.mark.parametrize("shape", [[1, 1, 32, 32], [1, 1, 128, 128], [32, 32, 32, 32], [96, 96, 96, 96]])
 @pytest.mark.parametrize("perm", [[0, 2, 3, 1], [0, 3, 1, 2], [1, 2, 3, 0], [2, 1, 3, 0], [2, 0, 3, 1]])
@@ -538,6 +558,9 @@ def test_permute_4d_other_permutations(device, shape, perm, dtype):
     assert torch_output.shape == output_tensor.shape
     assert_with_pcc(torch_output, output_tensor, 0.9999)
 
+    # this bfloat16 addition check fails every other time when running:
+    # pytest 'tests/ttnn/unit_tests/operations/test_permute.py::test_permute_4d_other_permutations[dtype=DataType.INT32-perm=[0, 3, 1, 2]-shape=[1, 1, 32, 32]]'
+    run_simple(device)
 
 @pytest.mark.parametrize("shape", [[33, 1, 17, 33, 33]])
 @pytest.mark.parametrize("perm", [[0, 1, 4, 2, 3], [0, 4, 1, 2, 3], [2, 4, 1, 0, 3], [4, 2, 1, 0, 3]])
