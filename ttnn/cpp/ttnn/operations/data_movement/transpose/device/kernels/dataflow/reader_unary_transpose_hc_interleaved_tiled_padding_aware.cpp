@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include "dataflow_api.h"
 #include "ttnn/operations/data_movement/common/kernels/common.hpp"
+#include "debug/dprint.h"
 
 void kernel_main() {
     uint32_t src_addr = get_arg_val<uint32_t>(0);
@@ -45,6 +46,7 @@ void kernel_main() {
     uint32_t end_id = start_id + num_tiles;
     for (uint32_t i = start_id; i < end_id; ++i) {
 #endif
+        // for (int z = 0; z < 10000; ++z) asm("nop");
         uint32_t linear_tile_index = 0;
         if constexpr (swap_hw) {
             uint32_t rem = i;
@@ -64,6 +66,7 @@ void kernel_main() {
         cb_push_back(cb_id_in0, onetile);
     }
     if constexpr (needs_padding) {
+        DPRINT << "PADDING" << ENDL();
         // Add padding
         cb_reserve_back(tt::CBIndex::c_1, 1);
         uint32_t l1_write_addr = get_write_ptr(tt::CBIndex::c_1);
