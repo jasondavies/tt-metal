@@ -12,220 +12,6 @@ import itertools
 from tests.ttnn.utils_for_testing import assert_with_pcc, assert_equal
 from models.utility_functions import is_blackhole, skip_for_wormhole_b0
 
-import torch
-from collections import defaultdict
-from typing import List, Tuple, Dict, Set
-
-
-def find_tensor_swaps(original: torch.Tensor, modified: torch.Tensor, tolerance: float = 1e-6) -> Dict:
-    """
-    Find which leaves were swapped between two tensors.
-
-    Args:
-        original: Original tensor of shape (96, 96, 96, 96)
-        modified: Modified tensor with potential swaps
-        tolerance: Tolerance for floating point comparison
-
-    Returns:
-        Dictionary with swap analysis results
-    """
-    assert original.shape == modified.shape == (96, 96, 96, 96), "Tensors must be (96, 96, 96, 96)"
-
-    # Step 1: Find all positions where leaves don't match
-    print("Step 1: Finding mismatched positions...")
-    leaf_matches = torch.allclose(original, modified, atol=tolerance, rtol=tolerance)
-    if leaf_matches:
-        return {"swaps": [], "corrupted": [], "total_mismatches": 0}
-
-    # Compare each leaf individually
-    mismatched_positions = []
-    for i in range(96):
-        for j in range(96):
-            for k in range(96):
-                if not torch.allclose(original[i, j, k, :], modified[i, j, k, :], atol=tolerance, rtol=tolerance):
-                    mismatched_positions.append((i, j, k))
-
-    print(f"Found {len(mismatched_positions)} mismatched leaves")
-
-    if len(mismatched_positions) == 0:
-        return {"swaps": [], "corrupted": [], "total_mismatches": 0}
-
-    # Step 2: Build lookup table for original leaves
-    print("Step 2: Building lookup table...")
-    original_leaf_map = {}
-    for i in range(96):
-        for j in range(96):
-            for k in range(96):
-                leaf = original[i, j, k, :]
-                # Convert to tuple for hashing (approximate for floating point)
-                leaf_key = tuple(leaf.round(decimals=8).tolist())
-                if leaf_key not in original_leaf_map:
-                    original_leaf_map[leaf_key] = []
-                original_leaf_map[leaf_key].append((i, j, k))
-
-    # Step 3: For each mismatched position, find where its leaf came from
-    print("Step 3: Analyzing swaps...")
-    swap_pairs = []
-    corrupted_positions = []
-    processed_positions = set()
-
-    for pos in mismatched_positions:
-        if pos in processed_positions:
-            continue
-
-        i, j, k = pos
-        modified_leaf = modified[i, j, k, :]
-        modified_leaf_key = tuple(modified_leaf.round(decimals=8).tolist())
-
-        # Check if this modified leaf exists in the original tensor
-        if modified_leaf_key in original_leaf_map:
-            # Find potential source positions
-            potential_sources = original_leaf_map[modified_leaf_key]
-
-            # Check which source position is also mismatched (indicating a swap)
-            for source_pos in potential_sources:
-                if source_pos in mismatched_positions and source_pos not in processed_positions:
-                    # Check if source position now contains our original leaf
-                    source_i, source_j, source_k = source_pos
-                    original_leaf_at_pos = original[i, j, k, :]
-                    modified_leaf_at_source = modified[source_i, source_j, source_k, :]
-
-                    if torch.allclose(original_leaf_at_pos, modified_leaf_at_source, atol=tolerance, rtol=tolerance):
-                        # Confirmed swap!
-                        swap_pairs.append((pos, source_pos))
-                        processed_positions.add(pos)
-                        processed_positions.add(source_pos)
-                        break
-
-            # If no swap partner found, might be a move (not a swap)
-            if pos not in processed_positions:
-                # This leaf moved from somewhere else, but its original position
-                # might have been filled with something else (corruption or complex swap)
-                corrupted_positions.append(pos)
-                processed_positions.add(pos)
-        else:
-            # This leaf doesn't exist in original - it's corrupted
-            corrupted_positions.append(pos)
-            processed_positions.add(pos)
-
-    # Step 4: Verify swaps
-    print("Step 4: Verifying swaps...")
-    verified_swaps = []
-    for pos1, pos2 in swap_pairs:
-        i1, j1, k1 = pos1
-        i2, j2, k2 = pos2
-
-        # Double check the swap
-        orig1 = original[i1, j1, k1, :]
-        orig2 = original[i2, j2, k2, :]
-        mod1 = modified[i1, j1, k1, :]
-        mod2 = modified[i2, j2, k2, :]
-
-        if torch.allclose(orig1, mod2, atol=tolerance, rtol=tolerance) and torch.allclose(
-            orig2, mod1, atol=tolerance, rtol=tolerance
-        ):
-            verified_swaps.append((pos1, pos2))
-
-    # Summary
-    results = {
-        "total_mismatches": len(mismatched_positions),
-        "swaps": verified_swaps,
-        "corrupted": corrupted_positions,
-        "swap_count": len(verified_swaps),
-        "corruption_count": len(corrupted_positions),
-    }
-
-    return results
-
-
-def print_swap_analysis(results: Dict):
-    """Print a detailed analysis of the swap detection results"""
-    print("\n" + "=" * 60)
-    print("TENSOR SWAP ANALYSIS RESULTS")
-    print("=" * 60)
-
-    print(f"Total mismatched leaves: {results['total_mismatches']}")
-    print(f"Confirmed swaps: {results['swap_count']} pairs ({results['swap_count']*2} positions)")
-    print(f"Corrupted/moved leaves: {results['corruption_count']}")
-
-    if results["swaps"]:
-        print(f"\nDetected swaps:")
-        for i, (pos1, pos2) in enumerate(results["swaps"], 1):
-            print(f"  {i}. {pos1} ↔ {pos2}")
-
-    if results["corrupted"]:
-        print(f"\nCorrupted/moved positions (first 10):")
-        for pos in results["corrupted"][:10]:
-            print(f"  - {pos}")
-        if len(results["corrupted"]) > 10:
-            print(f"  ... and {len(results['corrupted']) - 10} more")
-
-
-# Example usage and testing
-def create_test_tensors():
-    """Create test tensors with known swaps for validation"""
-    print("Creating test tensors...")
-
-    # Create original random tensor
-    torch.manual_seed(42)  # For reproducibility
-    original = torch.randn(96, 96, 96, 96)
-
-    # Create modified tensor with some swaps
-    modified = original.clone()
-
-    # Perform some known swaps
-    known_swaps = [((0, 0, 0), (1, 1, 1)), ((5, 10, 15), (20, 25, 30)), ((50, 60, 70), (80, 85, 90))]
-
-    for (i1, j1, k1), (i2, j2, k2) in known_swaps:
-        # Swap the leaves
-        temp = modified[i1, j1, k1, :].clone()
-        modified[i1, j1, k1, :] = modified[i2, j2, k2, :]
-        modified[i2, j2, k2, :] = temp
-
-    # Add some corruption
-    modified[10, 20, 30, :] = torch.randn(96) * 1000  # Completely different values
-
-    print(f"Created tensors with {len(known_swaps)} known swaps and 1 corruption")
-    return original, modified, known_swaps
-
-
-# Test the function
-if __name__ == "__main__":
-    # Create test case
-    original, modified, known_swaps = create_test_tensors()
-
-    # Run analysis
-    results = find_tensor_swaps(original, modified)
-
-    # Print results
-    print_swap_analysis(results)
-
-    # Verify against known swaps
-    print(f"\nValidation:")
-    print(f"Known swaps: {known_swaps}")
-    print(f"Detected swaps: {results['swaps']}")
-
-    detected_set = {tuple(sorted([pos1, pos2])) for pos1, pos2 in results["swaps"]}
-    known_set = {tuple(sorted([pos1, pos2])) for pos1, pos2 in known_swaps}
-
-    if detected_set == known_set:
-        print("✅ Perfect detection!")
-    else:
-        print("❌ Detection mismatch")
-        print(f"Missing: {known_set - detected_set}")
-        print(f"False positives: {detected_set - known_set}")
-
-
-def find_swapped_leaves(original, modified):
-    """Find positions where 96-element leaves differ between tensors"""
-    # Compare each leaf (last dimension)
-    leaf_matches = torch.all(original == modified, dim=-1)
-
-    # Find positions where leaves don't match
-    swapped_positions = torch.where(~leaf_matches)
-
-    return swapped_positions
-
 
 def random_torch_tensor(dtype, shape):
     if dtype == ttnn.int32:
@@ -233,11 +19,6 @@ def random_torch_tensor(dtype, shape):
     if dtype == ttnn.float32:
         return torch.rand(shape, dtype=torch.float32)
     if dtype == ttnn.bfloat16:
-        # tensor = torch.full(shape, 1, dtype=torch.bfloat16)
-        # tensor[..., 1::2] = 0
-        # leaf_values = torch.arange(96, dtype=torch.bfloat16)
-        # tensor = leaf_values.expand(shape).clone()
-        # return tensor
         return torch.rand(shape, dtype=torch.bfloat16)
 
 
@@ -304,7 +85,7 @@ def test_permute_on_4D_tensor_with_smaller_tuple_size(device, h, w, dtype):
         ttnn.bfloat16,
         pytest.param(
             ttnn.int32,
-            marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
+            # marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
         ),
     ],
 )
@@ -461,7 +242,7 @@ def test_permute_5d_width(device, shape, perm, memory_config, dtype):
         ttnn.float32,
         pytest.param(
             ttnn.int32,
-            marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
+            # marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
         ),
     ],
 )
@@ -514,7 +295,7 @@ def test_permute_squeeze(device, dtype):
         ttnn.float32,
         pytest.param(
             ttnn.int32,
-            marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
+            # marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
         ),
     ],
 )
@@ -607,7 +388,7 @@ def test_permute_4d_wh(device, shape, dtype):
         ttnn.bfloat16,
         pytest.param(
             ttnn.int32,
-            marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
+            # marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
         ),
     ],
 )
@@ -630,7 +411,7 @@ def test_permute_4d_cnwh(device, shape, dtype):
         ttnn.bfloat16,
         pytest.param(
             ttnn.int32,
-            marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
+            # marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
         ),
     ],
 )
@@ -761,7 +542,7 @@ def test_permute_5d_yw_padded(device, shape, perm, dtype, pad_value):
         ttnn.float32,
         pytest.param(
             ttnn.int32,
-            marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
+            # marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
         ),
     ],
 )
@@ -784,7 +565,7 @@ def test_permute_5d_yw_permutations(device, shape, perm, dtype):
         ttnn.bfloat16,
         pytest.param(
             ttnn.int32,
-            marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
+            # marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
         ),
     ],
 )
@@ -805,10 +586,7 @@ def test_permute_4d_yw_permutations(device, shape, perm, dtype):
     "dtype",
     [
         ttnn.bfloat16,
-        pytest.param(
-            ttnn.int32,
-            marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
-        ),
+        ttnn.int32,
     ],
 )
 def test_permute_4d_whyx_permutations(device, shape, perm, dtype):
@@ -818,8 +596,7 @@ def test_permute_4d_whyx_permutations(device, shape, perm, dtype):
     output_tensor = ttnn.permute(input_tensor, perm)
     output_tensor = ttnn.to_torch(output_tensor)
     torch_output = torch.permute(torch_tensor, perm)
-    assert torch_output.shape == output_tensor.shape
-    assert_with_pcc(torch_output, output_tensor, 1.0)
+    assert_equal(torch_output, output_tensor)
 
 
 @pytest.mark.parametrize("shape", [[1, 1, 32, 32], [1, 1, 128, 128], [32, 32, 32, 32], [96, 96, 96, 96]])
@@ -828,10 +605,7 @@ def test_permute_4d_whyx_permutations(device, shape, perm, dtype):
     "dtype",
     [
         ttnn.bfloat16,
-        pytest.param(
-            ttnn.int32,
-            # marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
-        ),
+        ttnn.int32,
     ],
 )
 def test_permute_4d_other_permutations(device, shape, perm, dtype):
@@ -843,28 +617,6 @@ def test_permute_4d_other_permutations(device, shape, perm, dtype):
     output_tensor = ttnn.permute(input_tensor, perm)
     output_tensor = ttnn.to_torch(output_tensor)
     torch_output = torch.permute(torch_tensor, perm)
-    assert torch_output.shape == output_tensor.shape
-
-    print("diff", torch.sum(torch_output != output_tensor).item())
-
-    # results = find_tensor_swaps(torch_output, output_tensor)
-    # print_swap_analysis(results)
-    # print(find_swapped_leaves(torch_output, output_tensor))
-
-    diff_indices = torch.where(output_tensor != torch_output)
-    print("count", len(diff_indices[0]))
-    # idxs = []
-    last_idx = (-1, -1, -1, -1)
-    for i in range(len(diff_indices[0])):
-        idx = tuple(dim_idx[i].item() for dim_idx in diff_indices)
-        # if last_idx[-2] == idx[-2]: continue
-        val1 = torch_output[idx].item()
-        val2 = output_tensor[idx].item()
-        print(f"Index {idx}: {val1} != {val2}")
-        last_idx = idx
-
-    # print(torch_output)
-    # print(output_tensor)
     assert_equal(torch_output, output_tensor)
 
 
@@ -875,10 +627,7 @@ def test_permute_4d_other_permutations(device, shape, perm, dtype):
     [
         ttnn.bfloat16,
         ttnn.float32,
-        pytest.param(
-            ttnn.int32,
-            marks=skip_for_wormhole_b0("possible race condition: https://github.com/tenstorrent/tt-metal/issues/22298"),
-        ),
+        ttnn.int32,
     ],
 )
 def test_permute_5d_wyh(device, shape, perm, dtype):
