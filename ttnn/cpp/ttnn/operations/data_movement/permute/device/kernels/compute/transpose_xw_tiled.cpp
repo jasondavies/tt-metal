@@ -56,9 +56,6 @@ void MAIN {
 
         tile_regs_acquire();
         transpose_wh_tile(cb_tilize, 0, 0);  // transpose call
-        MATH({
-            // for (int i = 0; i < 10000; ++i) TTI_NOP;
-        });
         tile_regs_commit();
 
         // pack and untilize

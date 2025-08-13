@@ -11,7 +11,6 @@
 #include "stream_io_map.h"
 #include "llk_pack_common.h"
 #include "tools/profiler/kernel_profiler.hpp"
-#include "debug/dprint.h"
 
 using namespace ckernel;
 

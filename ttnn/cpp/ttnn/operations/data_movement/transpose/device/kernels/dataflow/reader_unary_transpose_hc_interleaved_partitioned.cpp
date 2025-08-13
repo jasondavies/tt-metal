@@ -4,7 +4,6 @@
 
 #include <stdint.h>
 #include "dataflow_api.h"
-#include "debug/dprint.h"
 
 using uint32_t = std::uint32_t;
 
@@ -33,8 +32,6 @@ void kernel_main() {
     constexpr uint32_t ALIGNMENT = get_compile_time_arg_val(2);
     constexpr auto src_args = TensorAccessorArgs<3>();
     constexpr bool MISALIGNED = ALIGNMENT > SUBTILE_LINE_BYTES;
-
-    DPRINT << "MISALIGNED=" << (uint)MISALIGNED << ENDL();
 
     constexpr uint32_t onetile = 1;
     constexpr uint32_t cb_id_in0 = 0;
