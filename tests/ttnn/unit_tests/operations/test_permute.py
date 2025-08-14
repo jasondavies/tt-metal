@@ -245,17 +245,30 @@ def test_permute_5d_blocked(device, shape, perm, memory_config, dtype):
     input_a = random_torch_tensor(dtype, shape)
     torch_output = torch.permute(input_a, perm)
 
+    if dtype == ttnn.float32:
+        # currently, float32 will get truncated to tf32, so we truncate the
+        # PyTorch result here so that we can use assert_equal
+        torch_output = (torch_output.view(torch.int32) & 0xFFFFE000).view(torch.float32)
+
     tt_input = ttnn.from_torch(
         input_a, device=device, layout=ttnn.ROW_MAJOR_LAYOUT, dtype=dtype, memory_config=memory_config
     )
 
+    # tt_input = ttnn.to_layout(tt_input, ttnn.ROW_MAJOR_LAYOUT)
     tt_output = ttnn.permute(tt_input, perm)
     tt_output = ttnn.to_torch(tt_output)
 
-    if dtype == ttnn.float32:
-        assert_with_pcc(torch_output, tt_output, 0.9999)
-    else:
-        assert_equal(torch_output, tt_output)
+    diff_mask = tt_output != torch_output
+    diff_indices = torch.where(diff_mask)
+
+    print(f"Found {len(diff_indices[0])} differences:")
+    for i in range(len(diff_indices[0])):
+        idx = tuple(dim_idx[i].item() for dim_idx in diff_indices)
+        val1 = torch_output[idx].item()
+        val2 = tt_output[idx].item()
+        print(f"Index {idx}: {val1} != {val2}")
+
+    assert_equal(torch_output, tt_output)
 
 
 @pytest.mark.parametrize("dtype", [ttnn.bfloat16, ttnn.int32])
