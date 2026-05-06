@@ -76,17 +76,13 @@ template <SfpuType Op>
 inline constexpr bool is_fp32_equal_compare_v = Op == SfpuType::eq || Op == SfpuType::ne;
 
 template <SfpuType Op>
-inline constexpr bool is_fp32_ordered_compare_v =
-    Op == SfpuType::lt || Op == SfpuType::gt || Op == SfpuType::le || Op == SfpuType::ge;
-
-template <SfpuType Op>
 inline constexpr bool is_fp32_strict_ordered_compare_v = Op == SfpuType::lt || Op == SfpuType::gt;
 
 template <SfpuType Op>
 inline constexpr bool is_fp32_weak_ordered_compare_v = Op == SfpuType::le || Op == SfpuType::ge;
 
 template <SfpuType Op>
-inline constexpr bool is_fp32_compare_v = is_fp32_equal_compare_v<Op> || is_fp32_ordered_compare_v<Op>;
+inline constexpr bool is_fp32_compare_v = is_fp32_equal_compare_v<Op> || is_fp32_strict_ordered_compare_v<Op> || is_fp32_weak_ordered_compare_v<Op>;
 
 template <int ITERATIONS, SfpuType RELATIONAL_OP>
 inline void calculate_binary_comp_fp32_equal(const uint dst_index_in0, const uint dst_index_in1, const uint dst_index_out) {
