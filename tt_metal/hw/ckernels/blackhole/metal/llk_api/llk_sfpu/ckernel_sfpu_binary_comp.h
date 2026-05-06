@@ -90,9 +90,11 @@ inline void calculate_binary_comp_fp32_equal(const uint dst_index_in0, const uin
 
     constexpr uint A = p_sfpu::LREG0;
     constexpr uint B = p_sfpu::LREG1;
-    constexpr uint ABS_B = p_sfpu::LREG2;
-    constexpr uint TMP = p_sfpu::LREG3;
-    constexpr uint INF = p_sfpu::LREG4;
+    constexpr uint ABS_A = p_sfpu::LREG2;
+    constexpr uint ABS_B = p_sfpu::LREG3;
+    constexpr uint SUM = p_sfpu::LREG4;
+    constexpr uint TMP = p_sfpu::LREG5;
+    constexpr uint INF = p_sfpu::LREG6;
     constexpr uint default_result = RELATIONAL_OP == SfpuType::eq ? p_sfpu::LCONST_0 : p_sfpu::LCONST_1;
     constexpr uint equal_result = RELATIONAL_OP == SfpuType::eq ? p_sfpu::LCONST_1 : p_sfpu::LCONST_0;
     constexpr uint dst_tile_size = 64;
@@ -106,16 +108,20 @@ inline void calculate_binary_comp_fp32_equal(const uint dst_index_in0, const uin
         TT_SFPSTORE(default_result, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_out * dst_tile_size);
 
         TTI_SFPSETSGN(0, B, ABS_B, 1); // SFPSETSGN_MOD1_ARG_IMM
+        TTI_SFPSETSGN(0, A, ABS_A, 1); // SFPSETSGN_MOD1_ARG_IMM
+        TTI_SFPMAD(p_sfpu::LCONST_1, ABS_A, ABS_B, SUM, 0);
 
         TTI_SFPLE(0, B, A, 1); // SFPLE_MOD1_SET_CC
+        // if total-order a == b
         TTI_SFPLE(0, A, B, 1); // SFPLE_MOD1_SET_CC
-        TTI_SFPIADD(0, INF, ABS_B, sfpi::SFPIADD_MOD1_ARG_2SCOMP_LREG_DST | sfpi::SFPIADD_MOD1_CC_GTE0);
+        // if abs(a) + abs(b) <= inf; rejects NaN
+        TTI_SFPIADD(0, INF, SUM, sfpi::SFPIADD_MOD1_ARG_2SCOMP_LREG_DST | sfpi::SFPIADD_MOD1_CC_GTE0);
         TTI_SFPSTORE(equal_result, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
 
-        TTI_SFPLZ(0, A, TMP, sfpi::SFPLZ_MOD1_NOSGN_CC_EQ0);
-        TTI_SFPLZ(0, B, TMP, sfpi::SFPLZ_MOD1_NOSGN_CC_EQ0);
+        // if abs(a) + abs(b) == 0; this allows us to treat all ±subnormals as equal
+        TTI_SFPLZ(0, SUM, TMP, sfpi::SFPLZ_MOD1_CC_EQ0);
         TTI_SFPSTORE(equal_result, InstrModLoadStore::DEFAULT, ADDR_MOD_6, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
@@ -152,9 +158,12 @@ inline void calculate_binary_comp_fp32_strict_ordered(
         TTI_SFPSETSGN(0, B, ABS_B, 1); // SFPSETSGN_MOD1_ARG_IMM
 
         TTI_SFPMAD(p_sfpu::LCONST_1, ABS_A, ABS_B, SUM, 0);
+        // if total-order a < b
         TTI_SFPGT(0, A, B, 1); // SFPGT_MOD1_SET_CC
 
+        // if abs(a) + abs(b) != 0; rejects if both are ±subnormal
         TTI_SFPLZ(0, SUM, TMP, sfpi::SFPLZ_MOD1_CC_NE0);
+        // if abs(a) + abs(b) <= inf; rejects NaN
         TTI_SFPIADD(0, INF, SUM, sfpi::SFPIADD_MOD1_ARG_2SCOMP_LREG_DST | sfpi::SFPIADD_MOD1_CC_GTE0);
         TTI_SFPSTORE(p_sfpu::LCONST_1, InstrModLoadStore::DEFAULT, ADDR_MOD_6, dst_index_out * dst_tile_size);
 
@@ -192,13 +201,16 @@ inline void calculate_binary_comp_fp32_weak_ordered(
         TTI_SFPSETSGN(0, B, ABS_B, 1); // SFPSETSGN_MOD1_ARG_IMM
 
         TTI_SFPMAD(p_sfpu::LCONST_1, ABS_A, ABS_B, SUM, 0);
+        // if total-order a > b
         TTI_SFPGT(0, B, A, 1); // SFPGT_MOD1_SET_CC
 
+        // if abs(a) + abs(b) != 0; rejects if both are ±subnormal
         TTI_SFPLZ(0, SUM, TMP, sfpi::SFPLZ_MOD1_CC_NE0);
         TTI_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
 
+        // if abs(a) + abs(b) > inf; a or b is NaN
         TTI_SFPIADD(0, INF, SUM, sfpi::SFPIADD_MOD1_ARG_2SCOMP_LREG_DST | sfpi::SFPIADD_MOD1_CC_LT0);
         TTI_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_6, dst_index_out * dst_tile_size);
 
