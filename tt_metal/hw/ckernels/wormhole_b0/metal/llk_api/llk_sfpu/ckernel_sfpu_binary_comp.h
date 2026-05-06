@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: © 2026 Tenstorrent USA, Inc.
+// SPDX-FileCopyrightText: © 2026 Jason Davies <jason@jasondavies.com>
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -113,13 +114,13 @@ inline void calculate_binary_comp_fp32_equal(const uint dst_index_in0, const uin
     for (int d = 0; d < ITERATIONS; d++) {
         TT_SFPLOAD(A, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_in0 * dst_tile_size);
         TT_SFPLOAD(B, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_in1 * dst_tile_size);
-        TT_SFPSTORE(default_result, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
+        TT_SFPSTORE(default_result, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_out * dst_tile_size);
 
         TTI_SFPSETSGN(0, B, ABS_B, SFPSETSGN_ABS);
 
         TTI_SFPLZ(0, A, TMP, SFPLZ_ABS_EQ0);
         TTI_SFPLZ(0, B, TMP, SFPLZ_ABS_EQ0);
-        TTI_SFPSTORE(equal_result, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
+        TT_SFPSTORE(equal_result, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
 
@@ -127,7 +128,7 @@ inline void calculate_binary_comp_fp32_equal(const uint dst_index_in0, const uin
 
         TTI_SFPXOR(0, B, A, 0);
         TTI_SFPLZ(0, A, TMP, SFPLZ_EQ0);
-        TTI_SFPSTORE(equal_result, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
+        TT_SFPSTORE(equal_result, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
     }
@@ -162,10 +163,9 @@ inline void calculate_binary_comp_fp32_strict_ordered(
 
 #pragma GCC unroll 8
     for (int d = 0; d < ITERATIONS; d++) {
-        TT_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
-
         TT_SFPLOAD(A, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_a * dst_tile_size);
         TT_SFPLOAD(B, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_b * dst_tile_size);
+        TT_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_out * dst_tile_size);
 
         TTI_SFPSETSGN(0, A, ABS_A, SFPSETSGN_ABS);
         TTI_SFPSETSGN(0, B, ABS_B, SFPSETSGN_ABS);
@@ -181,7 +181,7 @@ inline void calculate_binary_comp_fp32_strict_ordered(
 
         TTI_SFPXOR(0, A, COPY, 0);
         TTI_SFPLZ(0, COPY, TMP, SFPLZ_NE0);
-        TTI_SFPSTORE(p_sfpu::LCONST_1, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
+        TT_SFPSTORE(p_sfpu::LCONST_1, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
     }
@@ -216,10 +216,9 @@ inline void calculate_binary_comp_fp32_weak_ordered(
 
 #pragma GCC unroll 8
     for (int d = 0; d < ITERATIONS; d++) {
-        TT_SFPSTORE(p_sfpu::LCONST_1, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
-
         TT_SFPLOAD(A, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_a * dst_tile_size);
         TT_SFPLOAD(B, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_b * dst_tile_size);
+        TT_SFPSTORE(p_sfpu::LCONST_1, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_out * dst_tile_size);
 
         TTI_SFPSETSGN(0, A, ABS_A, SFPSETSGN_ABS);
         TTI_SFPSETSGN(0, B, ABS_B, SFPSETSGN_ABS);
@@ -234,12 +233,12 @@ inline void calculate_binary_comp_fp32_weak_ordered(
 
         TTI_SFPXOR(0, A, COPY, 0);
         TTI_SFPLZ(0, COPY, TMP, SFPLZ_NE0);
-        TTI_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
+        TT_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
 
         TTI_SFPIADD(0, INF, SUM, SFPIADD_INF_MINUS_SUM_LT0);
-        TTI_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
+        TT_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
     }

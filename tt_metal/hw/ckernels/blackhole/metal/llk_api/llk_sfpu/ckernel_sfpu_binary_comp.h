@@ -112,14 +112,14 @@ inline void calculate_binary_comp_fp32_equal(const uint dst_index_in0, const uin
     for (int d = 0; d < ITERATIONS; d++) {
         TT_SFPLOAD(A, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_in0 * dst_tile_size);
         TT_SFPLOAD(B, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_in1 * dst_tile_size);
-        TT_SFPSTORE(default_result, InstrModLoadStore::DEFAULT, ADDR_MOD_6, dst_index_out * dst_tile_size);
+        TT_SFPSTORE(default_result, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_out * dst_tile_size);
 
         TTI_SFPSETSGN(0, B, ABS_B, SFPSETSGN_ABS);
 
         TTI_SFPLE(0, B, A, SFPLE_SET_CC);
         TTI_SFPLE(0, A, B, SFPLE_SET_CC);
         TTI_SFPIADD(0, INF, ABS_B, SFPIADD_INF_MINUS_ABS_B_GTE0);
-        TTI_SFPSTORE(equal_result, InstrModLoadStore::DEFAULT, ADDR_MOD_6, dst_index_out * dst_tile_size);
+        TTI_SFPSTORE(equal_result, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
 
@@ -159,10 +159,9 @@ inline void calculate_binary_comp_fp32_strict_ordered(
 
 #pragma GCC unroll 8
     for (int d = 0; d < ITERATIONS; d++) {
-        TT_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_6, dst_index_out * dst_tile_size);
-
         TT_SFPLOAD(A, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_a * dst_tile_size);
         TT_SFPLOAD(B, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_b * dst_tile_size);
+        TT_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_out * dst_tile_size);
 
         TTI_SFPSETSGN(0, A, ABS_A, SFPSETSGN_ABS);
         TTI_SFPSETSGN(0, B, ABS_B, SFPSETSGN_ABS);
@@ -206,10 +205,9 @@ inline void calculate_binary_comp_fp32_weak_ordered(
 
 #pragma GCC unroll 8
     for (int d = 0; d < ITERATIONS; d++) {
-        TT_SFPSTORE(p_sfpu::LCONST_1, InstrModLoadStore::DEFAULT, ADDR_MOD_6, dst_index_out * dst_tile_size);
-
         TT_SFPLOAD(A, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_a * dst_tile_size);
         TT_SFPLOAD(B, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_b * dst_tile_size);
+        TT_SFPSTORE(p_sfpu::LCONST_1, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_out * dst_tile_size);
 
         TTI_SFPSETSGN(0, A, ABS_A, SFPSETSGN_ABS);
         TTI_SFPSETSGN(0, B, ABS_B, SFPSETSGN_ABS);
@@ -218,7 +216,7 @@ inline void calculate_binary_comp_fp32_weak_ordered(
         TTI_SFPGT(0, B, A, SFPGT_SET_CC);
 
         TTI_SFPLZ(0, SUM, TMP, SFPLZ_NE0);
-        TTI_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_6, dst_index_out * dst_tile_size);
+        TTI_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_7, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
 
