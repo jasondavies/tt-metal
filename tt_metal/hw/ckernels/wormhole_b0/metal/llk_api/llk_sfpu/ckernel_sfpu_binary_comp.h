@@ -101,13 +101,6 @@ inline void calculate_binary_comp_fp32_equal(const uint dst_index_in0, const uin
     constexpr uint equal_result = RELATIONAL_OP == SfpuType::eq ? p_sfpu::LCONST_1 : p_sfpu::LCONST_0;
     constexpr uint dst_tile_size = 64;
 
-    // Mod1 bits from SFPLZ/SFPSETSGN ISA definitions.
-    constexpr uint SFPSETSGN_ABS = 1;
-    constexpr uint SFPLZ_ABS_EQ0 = 4 | 2 | 8;
-    constexpr uint SFPLZ_EQ0 = 2 | 8;
-    constexpr uint SFPIADD_INF_MINUS_ABS_B_GTE0 =
-        sfpi::SFPIADD_MOD1_ARG_2SCOMP_LREG_DST | sfpi::SFPIADD_MOD1_CC_GTE0;
-
     TTI_SFPLOADI(INF, sfpi::SFPLOADI_MOD0_FLOATB, 0x7f80);
 
 #pragma GCC unroll 8
@@ -116,18 +109,18 @@ inline void calculate_binary_comp_fp32_equal(const uint dst_index_in0, const uin
         TT_SFPLOAD(B, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_in1 * dst_tile_size);
         TT_SFPSTORE(default_result, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_out * dst_tile_size);
 
-        TTI_SFPSETSGN(0, B, ABS_B, SFPSETSGN_ABS);
+        TTI_SFPSETSGN(0, B, ABS_B, 1); // SFPSETSGN_MOD1_ARG_IMM
 
-        TTI_SFPLZ(0, A, TMP, SFPLZ_ABS_EQ0);
-        TTI_SFPLZ(0, B, TMP, SFPLZ_ABS_EQ0);
+        TTI_SFPLZ(0, A, TMP, sfpi::SFPLZ_MOD1_NOSGN_CC_EQ0);
+        TTI_SFPLZ(0, B, TMP, sfpi::SFPLZ_MOD1_NOSGN_CC_EQ0);
         TT_SFPSTORE(equal_result, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
 
-        TTI_SFPIADD(0, INF, ABS_B, SFPIADD_INF_MINUS_ABS_B_GTE0);
+        TTI_SFPIADD(0, INF, ABS_B, sfpi::SFPIADD_MOD1_ARG_2SCOMP_LREG_DST | sfpi::SFPIADD_MOD1_CC_GTE0);
 
         TTI_SFPXOR(0, B, A, 0);
-        TTI_SFPLZ(0, A, TMP, SFPLZ_EQ0);
+        TTI_SFPLZ(0, A, TMP, sfpi::SFPLZ_MOD1_CC_EQ0);
         TT_SFPSTORE(equal_result, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
@@ -153,12 +146,6 @@ inline void calculate_binary_comp_fp32_strict_ordered(
     const uint dst_index_a = swap_operands ? dst_index_in1 : dst_index_in0;
     const uint dst_index_b = swap_operands ? dst_index_in0 : dst_index_in1;
 
-    // Mod1 bits from SFPLZ/SFPSETSGN ISA definitions.
-    constexpr uint SFPSETSGN_ABS = 1;
-    constexpr uint SFPLZ_NE0 = 2;
-    constexpr uint SFPIADD_INF_MINUS_SUM_GTE0 =
-        sfpi::SFPIADD_MOD1_ARG_2SCOMP_LREG_DST | sfpi::SFPIADD_MOD1_CC_GTE0;
-
     TTI_SFPLOADI(INF, sfpi::SFPLOADI_MOD0_FLOATB, 0x7f80);
 
 #pragma GCC unroll 8
@@ -167,20 +154,20 @@ inline void calculate_binary_comp_fp32_strict_ordered(
         TT_SFPLOAD(B, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_b * dst_tile_size);
         TT_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_out * dst_tile_size);
 
-        TTI_SFPSETSGN(0, A, ABS_A, SFPSETSGN_ABS);
-        TTI_SFPSETSGN(0, B, ABS_B, SFPSETSGN_ABS);
+        TTI_SFPSETSGN(0, A, ABS_A, 1); // SFPSETSGN_MOD1_ARG_IMM
+        TTI_SFPSETSGN(0, B, ABS_B, 1); // SFPSETSGN_MOD1_ARG_IMM
 
         TTI_SFPMAD(p_sfpu::LCONST_1, ABS_A, ABS_B, SUM, 0);
         TTI_SFPMOV(0, A, COPY, 0);
 
-        TTI_SFPLZ(0, SUM, TMP, SFPLZ_NE0);
-        TTI_SFPIADD(0, INF, SUM, SFPIADD_INF_MINUS_SUM_GTE0);
+        TTI_SFPLZ(0, SUM, TMP, sfpi::SFPLZ_MOD1_CC_NE0);
+        TTI_SFPIADD(0, INF, SUM, sfpi::SFPIADD_MOD1_ARG_2SCOMP_LREG_DST | sfpi::SFPIADD_MOD1_CC_GTE0);
 
         TTI_SFPSWAP(0, A, B, sfpi::SFPSWAP_MOD1_VEC_MIN_MAX);
         TTI_SFPNOP;
 
         TTI_SFPXOR(0, A, COPY, 0);
-        TTI_SFPLZ(0, COPY, TMP, SFPLZ_NE0);
+        TTI_SFPLZ(0, COPY, TMP, sfpi::SFPLZ_MOD1_CC_NE0);
         TT_SFPSTORE(p_sfpu::LCONST_1, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
@@ -206,12 +193,6 @@ inline void calculate_binary_comp_fp32_weak_ordered(
     const uint dst_index_a = swap_operands ? dst_index_in1 : dst_index_in0;
     const uint dst_index_b = swap_operands ? dst_index_in0 : dst_index_in1;
 
-    // Mod1 bits from SFPLZ/SFPSETSGN ISA definitions.
-    constexpr uint SFPSETSGN_ABS = 1;
-    constexpr uint SFPLZ_NE0 = 2;
-    constexpr uint SFPIADD_INF_MINUS_SUM_LT0 =
-        sfpi::SFPIADD_MOD1_ARG_2SCOMP_LREG_DST | sfpi::SFPIADD_MOD1_CC_LT0;
-
     TTI_SFPLOADI(INF, sfpi::SFPLOADI_MOD0_FLOATB, 0x7f80);
 
 #pragma GCC unroll 8
@@ -220,24 +201,24 @@ inline void calculate_binary_comp_fp32_weak_ordered(
         TT_SFPLOAD(B, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_b * dst_tile_size);
         TT_SFPSTORE(p_sfpu::LCONST_1, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_out * dst_tile_size);
 
-        TTI_SFPSETSGN(0, A, ABS_A, SFPSETSGN_ABS);
-        TTI_SFPSETSGN(0, B, ABS_B, SFPSETSGN_ABS);
+        TTI_SFPSETSGN(0, A, ABS_A, 1); // SFPSETSGN_MOD1_ARG_IMM
+        TTI_SFPSETSGN(0, B, ABS_B, 1); // SFPSETSGN_MOD1_ARG_IMM
 
         TTI_SFPMAD(p_sfpu::LCONST_1, ABS_A, ABS_B, SUM, 0);
         TTI_SFPMOV(0, A, COPY, 0);
 
-        TTI_SFPLZ(0, SUM, TMP, SFPLZ_NE0);
+        TTI_SFPLZ(0, SUM, TMP, sfpi::SFPLZ_MOD1_CC_NE0);
 
         TTI_SFPSWAP(0, A, B, sfpi::SFPSWAP_MOD1_VEC_MIN_MAX);
         TTI_SFPNOP;
 
         TTI_SFPXOR(0, A, COPY, 0);
-        TTI_SFPLZ(0, COPY, TMP, SFPLZ_NE0);
+        TTI_SFPLZ(0, COPY, TMP, sfpi::SFPLZ_MOD1_CC_NE0);
         TT_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
 
-        TTI_SFPIADD(0, INF, SUM, SFPIADD_INF_MINUS_SUM_LT0);
+        TTI_SFPIADD(0, INF, SUM, sfpi::SFPIADD_MOD1_ARG_2SCOMP_LREG_DST | sfpi::SFPIADD_MOD1_CC_LT0);
         TT_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
 
         TTI_SFPENCC(0, 0, 0, 0);
