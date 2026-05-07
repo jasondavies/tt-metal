@@ -93,8 +93,7 @@ inline void calculate_binary_comp_fp32_equal(const uint dst_index_in0, const uin
     constexpr uint ABS_A = p_sfpu::LREG2;
     constexpr uint ABS_B = p_sfpu::LREG3;
     constexpr uint SUM = p_sfpu::LREG4;
-    constexpr uint TMP = p_sfpu::LREG5;
-    constexpr uint INF = p_sfpu::LREG6;
+    constexpr uint INF = p_sfpu::LREG5;
     constexpr uint default_result = RELATIONAL_OP == SfpuType::eq ? p_sfpu::LCONST_0 : p_sfpu::LCONST_1;
     constexpr uint equal_result = RELATIONAL_OP == SfpuType::eq ? p_sfpu::LCONST_1 : p_sfpu::LCONST_0;
     constexpr uint dst_tile_size = 64;
@@ -113,14 +112,14 @@ inline void calculate_binary_comp_fp32_equal(const uint dst_index_in0, const uin
         TTI_SFPXOR(0, B, A, 0);
 
         // if abs(a) + abs(b) == 0; this allows us to treat all ±subnormals as equal
-        TTI_SFPLZ(0, SUM, TMP, sfpi::SFPLZ_MOD1_CC_EQ0);
+        TTI_SFPSETCC(0, SUM, 0, sfpi::SFPSETCC_MOD1_LREG_EQ0);
         TT_SFPSTORE(equal_result, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_out * dst_tile_size);
         TTI_SFPENCC(0, 0, 0, 0);
 
         // if abs(a) + abs(b) <= inf; rejects NaN
         TTI_SFPIADD(0, INF, SUM, sfpi::SFPIADD_MOD1_ARG_2SCOMP_LREG_DST | sfpi::SFPIADD_MOD1_CC_GTE0);
         // if a ^ b == 0; requires both values to be bitwise identical
-        TTI_SFPLZ(0, A, TMP, sfpi::SFPLZ_MOD1_CC_EQ0);
+        TTI_SFPSETCC(0, A, 0, sfpi::SFPSETCC_MOD1_LREG_EQ0);
         TT_SFPSTORE(equal_result, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
         TTI_SFPENCC(0, 0, 0, 0);
     }
@@ -137,8 +136,7 @@ inline void calculate_binary_comp_fp32_strict_ordered(
     constexpr uint ABS_B = p_sfpu::LREG3;
     constexpr uint SUM = p_sfpu::LREG4;
     constexpr uint COPY = p_sfpu::LREG5;
-    constexpr uint TMP = p_sfpu::LREG6;
-    constexpr uint INF = p_sfpu::LREG7;
+    constexpr uint INF = p_sfpu::LREG6;
     constexpr uint dst_tile_size = 64;
 
     constexpr bool swap_operands = RELATIONAL_OP == SfpuType::gt;
@@ -159,14 +157,14 @@ inline void calculate_binary_comp_fp32_strict_ordered(
         TTI_SFPMOV(0, A, COPY, 0);
 
         // if abs(a) + abs(b) != 0; rejects if both are ±subnormal
-        TTI_SFPLZ(0, SUM, TMP, sfpi::SFPLZ_MOD1_CC_NE0);
+        TTI_SFPSETCC(0, SUM, 0, sfpi::SFPSETCC_MOD1_LREG_NE0);
         // if abs(a) + abs(b) <= inf; rejects NaN
         TTI_SFPIADD(0, INF, SUM, sfpi::SFPIADD_MOD1_ARG_2SCOMP_LREG_DST | sfpi::SFPIADD_MOD1_CC_GTE0);
 
         // reject if a >= b
         TTI_SFPSWAP(0, A, B, sfpi::SFPSWAP_MOD1_VEC_MIN_MAX);
         TTI_SFPXOR(0, A, COPY, 0);
-        TTI_SFPLZ(0, COPY, TMP, sfpi::SFPLZ_MOD1_CC_NE0);
+        TTI_SFPSETCC(0, COPY, 0, sfpi::SFPSETCC_MOD1_LREG_NE0);
         TT_SFPSTORE(p_sfpu::LCONST_1, InstrModLoadStore::DEFAULT, ADDR_MOD_2, dst_index_out * dst_tile_size);
         TTI_SFPENCC(0, 0, 0, 0);
     }
@@ -183,8 +181,7 @@ inline void calculate_binary_comp_fp32_weak_ordered(
     constexpr uint ABS_B = p_sfpu::LREG3;
     constexpr uint SUM = p_sfpu::LREG4;
     constexpr uint COPY = p_sfpu::LREG5;
-    constexpr uint TMP = p_sfpu::LREG6;
-    constexpr uint INF = p_sfpu::LREG7;
+    constexpr uint INF = p_sfpu::LREG6;
     constexpr uint dst_tile_size = 64;
 
     constexpr bool swap_operands = RELATIONAL_OP == SfpuType::le;
@@ -206,12 +203,12 @@ inline void calculate_binary_comp_fp32_weak_ordered(
         TTI_SFPMOV(0, A, COPY, 0);
 
         // if abs(a) + abs(b) != 0; rejects if both are ±subnormal
-        TTI_SFPLZ(0, SUM, TMP, sfpi::SFPLZ_MOD1_CC_NE0);
+        TTI_SFPSETCC(0, SUM, 0, sfpi::SFPSETCC_MOD1_LREG_NE0);
 
         // reject if original comparison is false
         TTI_SFPSWAP(0, A, B, sfpi::SFPSWAP_MOD1_VEC_MIN_MAX);
         TTI_SFPXOR(0, A, COPY, 0);
-        TTI_SFPLZ(0, COPY, TMP, sfpi::SFPLZ_MOD1_CC_NE0);
+        TTI_SFPSETCC(0, COPY, 0, sfpi::SFPSETCC_MOD1_LREG_NE0);
         TT_SFPSTORE(p_sfpu::LCONST_0, InstrModLoadStore::DEFAULT, ADDR_MOD_3, dst_index_out * dst_tile_size);
         TTI_SFPENCC(0, 0, 0, 0);
 
