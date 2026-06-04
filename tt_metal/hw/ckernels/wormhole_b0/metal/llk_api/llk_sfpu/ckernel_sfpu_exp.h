@@ -201,7 +201,7 @@ sfpi_inline sfpi::vFloat _sfpu_round_to_nearest_int32_(sfpi::vFloat z, sfpi::vIn
 
 template <bool unsafe = false>
 sfpi_inline sfpi::vFloat _sfpu_exp_fp32_accurate_(sfpi::vFloat a) {
-    sfpi::vInt i, e;
+    sfpi::vInt i, e, e_i;
     sfpi::vFloat f, r, j, y;
 
     // j = round(a / ln2)
@@ -232,23 +232,29 @@ sfpi_inline sfpi::vFloat _sfpu_exp_fp32_accurate_(sfpi::vFloat a) {
         e += i;
         y = sfpi::setexp(r, e);
     } else {
-        // overflow: y = infinity or NaN
-        y *= std::numeric_limits<float>::infinity();
-
+        // IMPORTANT: this bit-level hack only works on Wormhole, which
+        // doesn't produce canonical NaNs and requires this hack to handle
+        // -NaN while maintaining performance.
+        // Often (but not always), we can guarantee that both -NaN and +NaN
+        // have a mantissa of exactly 1 on Wormhole.  For this specific code,
+        // we can guarantee this is the case.
+        // The hack: subtract 1, which converts ±NaN to ±inf, otherwise
+        // generates a finite value.
+        // Then, multiply by 0 to obtain 0*±inf = ±NaN, otherwise 0*±finite = 0.
+        // This is our underflow result, which handles -NaN correctly too.
+        y = sfpi::reinterpret<sfpi::vFloat>(sfpi::reinterpret<sfpi::vInt>(y) + -1);
+        y *= 0.0f;
         e = sfpi::exexp(r, sfpi::ExponentMode::NoDebias);
-        e += i;
-
-        // if e < 255
+        // if e+i >= 0
         v_block {
-            sfpi::vInt e_lt_255 = __builtin_rvtt_sfpiadd_i(e.get(), -255, sfpi::SFPIADD_MOD1_CC_LT0);
-
-            // y = 2**i * r
-            y = sfpi::setexp(r, e);
-
-            // if e < 1
-            v_if(e_lt_255 < -254) {
-                // underflow, including subnormals
-                y = 0.0f;
+            e_i = __builtin_rvtt_sfpiadd_v(e.get(), i.get(), sfpi::SFPIADD_MOD1_CC_GTE0);
+            // Overflow: y = infinity or NaN
+            // We add infinity to our underflow result to get the overflow result.
+            // If underflow was NaN, then NaN+inf = NaN.  Otherwise 0+inf = inf.
+            y += std::numeric_limits<float>::infinity();
+            v_if(e_i < 255) {
+                // y = 2**i * r
+                y = sfpi::setexp(r, e_i);
             }
             v_endif;
         }
